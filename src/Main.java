@@ -20,7 +20,7 @@ public class Main {
     public static void main(String[] args) throws SQLException {
         long last;
         long first = System.currentTimeMillis();
-        countAvgSalarySThread();
+        countWorkersThatHaveMoreExperienceThenMThread((byte)0);
         last = System.currentTimeMillis();
         long delta = last - first;
         System.out.println(delta);
@@ -142,11 +142,12 @@ public class Main {
            ex.printStackTrace();
        }
    }
-    static void countWorkersThatHaveMoreExperienceThenMThread() {
+    static void countWorkersThatHaveMoreExperienceThenMThread(byte moreThan) {
         String avgSalarySql = "SELECT * FROM WORKERS LIMIT ? OFFSET ?";
         final int recordsPerThread = NUM_RECORDS / NUM_THREADS;
-        AtomicLong totalSum = new AtomicLong(0);
+        //AtomicLong totalSum = new AtomicLong(0);
         CountDownLatch latch = new CountDownLatch(NUM_THREADS);
+        long[] countOfWorkersInEveryThread = new long[NUM_THREADS];
 
         try (ExecutorService executor = Executors.newFixedThreadPool(NUM_THREADS)) {
             for (int i = 0; i < NUM_THREADS; i++) {
@@ -159,24 +160,70 @@ public class Main {
                         threadStmt.setInt(2, offset);
 
                         ResultSet rs = threadStmt.executeQuery();
-                        if (rs.next()) {
-                            long partialSum = rs.getLong("PARTIAL_SUM");
-                            totalSum.addAndGet(partialSum);
+                        while (rs.next()) {
+                            byte ageExperience = rs.getByte("WORK_EXPERIENCE");
+                            if(ageExperience > moreThan) {
+                                countOfWorkersInEveryThread[finalI]++;
+                            }
                         }
                     } catch (SQLException e) {
                         e.printStackTrace();
                     } finally {
                         latch.countDown();
+
                     }
                 });
             }
 
-            latch.await();  // Wait for all threads to finish
-            double averageSalary = (double) totalSum.get() / NUM_RECORDS;
-            System.out.println("Average Salary: " + averageSalary);
+            latch.await();// Wait for all threads to finish
+            long allWorkers = Arrays.stream(countOfWorkersInEveryThread).sum();
+            System.out.printf("%d workers have more than %d experience", allWorkers, moreThan);
 
         } catch (Exception ex) {
             ex.printStackTrace();
+        }
+    }
+    static void countWorkersThatHaveMoreExperienceThenSThread(byte moreThan) {
+        String avgSalarySql = "SELECT * FROM WORKERS";
+
+        long totalSum = 0L;
+
+        try (Connection threadConn = DriverManager.getConnection(URL);
+            PreparedStatement threadStmt = threadConn.prepareStatement(avgSalarySql)) {
+
+            ResultSet rs = threadStmt.executeQuery();
+            while (rs.next()) {
+                byte ageExperience = rs.getByte("WORK_EXPERIENCE");
+                if(ageExperience > moreThan) {
+                    totalSum++;
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        System.out.printf("%d workers have more than %d experience", totalSum, moreThan);
+
+    }
+    static void countWorkersWithMoreExperienceThanSql(byte moreThan) {
+        // SQL query to count workers with experience greater than the specified value
+        String countSql = "SELECT COUNT(*) FROM WORKERS WHERE WORK_EXPERIENCE > ?";
+
+        try (Connection conn = DriverManager.getConnection(URL);
+            PreparedStatement stmt = conn.prepareStatement(countSql)) {
+
+            // Set the parameter for the experience threshold
+            stmt.setByte(1, moreThan);
+
+            // Execute the query and process the result
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                long countOfWorkers = rs.getLong(1); // Retrieve the count from the first column
+                System.out.printf("%d workers have more than %d years of experience%n", countOfWorkers, moreThan);
+            }
+
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
     static void countAvgSalarySThread() {
